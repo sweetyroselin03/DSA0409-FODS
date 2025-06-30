@@ -3,23 +3,28 @@ from sklearn.tree import DecisionTreeRegressor, export_text
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+import sys
 
-# Load car dataset
+# Load dataset
 try:
-    df = pd.read_csv("car_data.csv")  # Must include target column 'Price'
+    df = pd.read_csv("car_data.csv")  # Replace with actual filename
 except FileNotFoundError:
     print("❌ Error: 'car_data.csv' not found.")
-    exit()
+    sys.exit()
 
-# Features and target
+if "Price" not in df.columns:
+    print("❌ Error: Target column 'Price' is missing from the dataset.")
+    sys.exit()
+
+# Split features and target
 X = df.drop("Price", axis=1)
 y = df["Price"]
 
-# Identify categorical and numeric features
-categorical_cols = X.select_dtypes(include=['object']).columns.tolist()
+# Detect column types
+categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
 numeric_cols = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
 
-# Build pipeline with preprocessing and Decision Tree Regressor
+# Define preprocessing pipeline
 preprocessor = ColumnTransformer([
     ("cat", OneHotEncoder(handle_unknown='ignore'), categorical_cols)
 ], remainder='passthrough')
@@ -29,37 +34,44 @@ pipeline = Pipeline([
     ("regressor", DecisionTreeRegressor(random_state=42))
 ])
 
-# Train model
+# Fit the pipeline
 pipeline.fit(X, y)
 
-# Input for a new car
-print("\n🚗 Enter the details of the car you want to sell:")
-
+# --- Get user input ---
+print("\n🚗 Enter details of the car you want to sell:")
 new_data = {}
 for col in X.columns:
-    value = input(f"{col}: ")
+    val = input(f"  ➤ {col}: ").strip()
     if col in numeric_cols:
         try:
-            value = float(value)
+            val = float(val)
         except ValueError:
-            print(f"❌ Invalid input for {col}. Must be a number.")
-            exit()
-    new_data[col] = [value]
+            print(f"❌ Invalid input for '{col}'. It must be numeric.")
+            sys.exit()
+    new_data[col] = [val]
 
-# Create DataFrame for new input
+# Convert input to DataFrame
 new_car_df = pd.DataFrame(new_data)
 
-# Predict price
+# Predict car price
 predicted_price = pipeline.predict(new_car_df)[0]
-print(f"\n💰 Predicted Price of the Car: ₹{predicted_price:,.2f}")
+print(f"\n💰 Estimated Car Price: ₹{predicted_price:,.2f}")
 
-# Show decision path (textual format from raw tree)
-# Fit tree separately to inspect internal structure
+# --- Show Decision Tree Path (Text Format) ---
+print("\n🧭 Simplified Decision Tree Path:")
+
+# Refit tree on encoded data for readable output
 tree = pipeline.named_steps["regressor"]
 X_encoded = preprocessor.fit_transform(X)
 feature_names = preprocessor.get_feature_names_out()
 
-# Display the decision path as text
-print("\n🧭 Decision Tree Path for Prediction:\n")
-tree_text = export_text(tree, feature_names=list(feature_names))
-print(tree_text)
+# Export tree as text
+tree_description = export_text(tree, feature_names=list(feature_names), max_depth=3)
+print(tree_description)
+
+# --- Optional: Show top important features ---
+importances = tree.feature_importances_
+important_features = pd.Series(importances, index=feature_names).sort_values(ascending=False)
+
+print("\n🌟 Top Influential Features (by importance):")
+print(important_features.head(5).round(3).to_string())
